@@ -7,37 +7,64 @@ library(cowplot)
 # Function to compute time-varying R-hat
 compute_rhat_df <- function(chains, burnin = 3000, eq_names = NULL) {
   
+  # Number of independent MCMC chains
   n_chains <- length(chains)
+  # Number of iterations in each chain
   n_iter   <- length(chains[[1]]$theta)
+  # Number of equations in the model
   n_eq     <- length(chains[[1]]$theta[[1]])
   
+  # If no equation names are provided, create generic labels
   if (is.null(eq_names)) {
     eq_names <- paste("Equation", seq_len(n_eq))
   }
   
+  # Loop over each equation
   rhat_df <- bind_rows(lapply(seq_len(n_eq), function(eq) {
+    
+    # Use the first chain, first iteration, current equation
+    # just to extract the structure of alphahat (matrix of coefficients over time)
     alphahat_example <- chains[[1]]$theta[[1]][[eq]]$alphahat
+    
+    # T = number of time periods
     T       <- nrow(alphahat_example)
+    # n_coef = number of coefficients for this equation
     n_coef  <- ncol(alphahat_example)
     
+    # Loop over coefficients
     bind_rows(lapply(seq_len(n_coef), function(ci) {
+      
+      # For each coefficient, compute R-hat over time
       rhat_ts <- sapply(seq_len(T), function(t) {
+        
+        # Collect posterior draws across chains for this time and coefficient
         draws <- lapply(seq_len(n_chains), function(ch) {
           sapply((burnin + 1):n_iter, function(i) {
             chains[[ch]]$theta[[i]][[eq]]$alphahat[t, ci]
           })
         })
+        
+        # Convert draws to coda format (mcmc.list) for R-hat computation
         mcmc_list <- as.mcmc.list(lapply(draws, as.mcmc))
+        
+        # Compute Gelman-Rubin statistic (R-hat)
         gelman.diag(mcmc_list, autoburnin = FALSE)$psrf[1]
       })
       
+      # Return a tidy tibble with results
       tibble(
-        equation    = eq_names[eq],
-        coef_index  = ci,
-        coefficient = if (ci == 1) "Intercept" else paste0("coef.", ci - 1),
-        time        = seq_len(T),
-        Rhat        = rhat_ts
-      )
+        equation    = eq_names[eq],                    # name of the equation
+        coef_index  = ci,                              # coefficient index
+        coefficient = if (ci == 1) "Intercept"         # label intercept
+                       else paste0("coef.", ci - 1),   # label slope coefficients
+        time        = seq_len(T),                      # time index
+        Rhat        = rhat_ts                          # computed R-hat values
+      ) %>%
+        # Ensure coefficients have a consistent factor order
+        mutate(coefficient = factor(
+          coefficient,
+          levels = c("Intercept", paste0("coef.", 1:(n_coef - 1)))
+        ))
     }))
   }))
   
