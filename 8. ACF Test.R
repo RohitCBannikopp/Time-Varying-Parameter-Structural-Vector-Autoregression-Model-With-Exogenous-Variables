@@ -8,6 +8,7 @@ library(ggplot2)
 max_lag   <- 6          # check autocorrelations up to lag 6
 ci_lower  <- 0.05       # lower quantile for posterior credible band
 ci_upper  <- 0.95       # upper quantile for posterior credible band
+var_names <- c("N_50","real_rate","term_spread","Dp_ratio","rel_bill_rate")
 
 # Function: compute sample autocorrelation at lag k
 acf_at_lag <- function(x, k){
